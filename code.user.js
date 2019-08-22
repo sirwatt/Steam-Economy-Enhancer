@@ -60,7 +60,7 @@
         '<div class="spinner"><div class="rect1"></div>&nbsp;<div class="rect2"></div>&nbsp;<div class="rect3"></div>&nbsp;<div class="rect4"></div>&nbsp;<div class="rect5"></div>&nbsp;</div>';
     var numberOfFailedRequests = 0;
 
-    var enableConsoleLog = false;
+    var enableConsoleLog = true;
 
     var isLoggedIn = typeof unsafeWindow.g_rgWalletInfo !== 'undefined' && unsafeWindow.g_rgWalletInfo != null || (typeof unsafeWindow.g_bLoggedIn !== 'undefined' && unsafeWindow.g_bLoggedIn);
 
@@ -275,6 +275,26 @@
         return market.getPriceBeforeFees(highest);
     }
 
+    // Calculates the 24 hour daily sold volume from history.
+    function calculateDailyHistoryVolume(history) {
+        var total = 0;
+
+        if (history != null) {
+            // Highest average price in the last xx hours.
+            var timeAgo = Date.now() - (24 * 60 * 60 * 1000);
+
+            history.forEach(function(historyItem) {
+                var d = new Date(historyItem[0]);
+                if (d.getTime() > timeAgo) {
+                    total += historyItem[2];
+                }
+            });
+        }
+
+        return total;
+    }
+
+
     // Calculates the listing price, before the fee.
     function calculateListingPriceBeforeFees(histogram) {
         if (typeof histogram === 'undefined' ||
@@ -323,6 +343,27 @@
         return market.getPriceBeforeFees(histogram.highest_buy_order);
     }
 
+    function getListingQuantityForThisPriceInCents(histogram, cents) {
+        if (typeof histogram === 'undefined')
+            return 0;
+
+        var histogramFiltered = histogram.sell_order_graph.filter(arr => {
+            var price = arr[0];
+            var priceAfterFees = market.getPriceBeforeFees(price*100);
+            var vol = arr[1];
+
+            return priceAfterFees == cents;
+        })
+
+        console.log('histogramFiltered',histogramFiltered);
+        if(histogramFiltered.length > 0)
+            return histogramFiltered[0][1]; //first element, the second parameter that is the current listing amount
+        else
+            return undefined;
+
+    }
+
+
     // Calculate the sell price based on the history and listings.
     // applyOffset specifies whether the price offset should be applied when the listings are used to determine the price.
     function calculateSellPriceBeforeFees(history, histogram, applyOffset, minPriceBeforeFees, maxPriceBeforeFees) {
@@ -340,9 +381,33 @@
             calculatedPrice = buyPrice;
         } else if (historyPrice < listingPrice || !shouldUseAverage) {
             calculatedPrice = listingPrice;
+
+            var dailySoldVolume = calculateDailyHistoryVolume(history);
+            var listingQuantity = getListingQuantityForThisPriceInCents(histogram, calculatedPrice);
+            console.log('dailySoldVolume',dailySoldVolume);
+            console.log('listingQuantity',listingQuantity);
+
+            //Check to see if my listing will be among many others and won't sell
+            // when the history and listing price are 2 or more cents apart (1 and 3 or 3 and 5)
+            // it can mean that my listing will sitting on the market for a long time
+            // so maybe a price just 1 below the greater value (listing) could be a wiser choice
+            if(historyPrice + 1 < listingPrice && dailySoldVolume < listingQuantity){
+                calculatedPrice = calculatedPrice-1;
+                console.log('!! Price Decreased to', calculatedPrice);
+            }
+
+
+
         } else {
             calculatedPrice = historyPrice;
         }
+
+        logConsole('BuyPrice ' + buyPrice);
+        logConsole('ListingPrice ' + listingPrice);
+        logConsole('HistoryPrice ' + historyPrice);
+        logConsole('---Chosen Price ' + calculatedPrice);
+        console.log('History', history)
+        console.log('Histogram', histogram)
 
         var changedToMax = false;
         // List for the maximum price if there are no listings yet.
@@ -1437,7 +1502,7 @@
                 sellItems(items);
             });
         }
-		
+
         function canSellSelectedItemsManually(items) {
             // We have to construct an URL like this
             // https://steamcommunity.com/market/multisell?appid=730&contextid=2&items[]=Falchion%20Case&qty[]=100
@@ -1445,7 +1510,7 @@
             var contextid = items[0].contextid;
 
             var hasInvalidItem = false;
-		  
+
             items.forEach(function(item) {
 				if (item.contextid != contextid || item.commodity == false)
 				    hasInvalidItem = true;
@@ -1458,12 +1523,12 @@
             getInventorySelectedMarketableItems(function(items) {
                 // We have to construct an URL like this
                 // https://steamcommunity.com/market/multisell?appid=730&contextid=2&items[]=Falchion%20Case&qty[]=100
-                
+
 				var appid = items[0].appid;
                 var contextid = items[0].contextid;
 
                 var itemsWithQty = {};
-              
+
                 items.forEach(function(item) {
                    itemsWithQty[item.market_hash_name] = itemsWithQty[item.market_hash_name] + 1 || 1;
                 });
@@ -1475,12 +1540,12 @@
 
                 var baseUrl = 'https://steamcommunity.com/market/multisell';
                 var redirectUrl = baseUrl + '?appid=' + appid + '&contextid=' + contextid + itemsString;
-                
+
                 var dialog = unsafeWindow.ShowDialog('Steam Economy Enhancer', '<iframe frameBorder="0" height="650" width="900" src="' + redirectUrl + '"></iframe>');
                 dialog.OnDismiss(function() {
                     items.forEach(function(item) {
                         var itemId = item.assetid || item.id;
-                        $('#' + item.appid + '_' + item.contextid + '_' + itemId).css('background', COLOR_PENDING);                      
+                        $('#' + item.appid + '_' + item.contextid + '_' + itemId).css('background', COLOR_PENDING);
                     });
                 });
             });
@@ -1771,9 +1836,9 @@
                     $('.sell_selected').show();
                     if (canSellSelectedItemsManually(items)) {
                         $('.sell_manual').show();
-                        $('.sell_manual > span').text('Sell ' + selectedItems + (selectedItems == 1 ? ' Item Manual' : ' Items Manual'));						
+                        $('.sell_manual > span').text('Sell ' + selectedItems + (selectedItems == 1 ? ' Item Manual' : ' Items Manual'));
                     } else {
-                        $('.sell_manual').hide();						
+                        $('.sell_manual').hide();
                     }
                     $('.sell_selected > span').text('Sell ' + selectedItems + (selectedItems == 1 ? ' Item' : ' Items'));
                 }
@@ -2322,7 +2387,7 @@
                 $('.market_listing_my_price', listingUI).last().css('background', COLOR_PRICE_NOT_CHECKED);
                 $('.market_listing_my_price', listingUI).last().prop('title', 'The price is not checked.');
                 listingUI.addClass('not_checked');
-              
+
                 return callback(true, true);
             }
 
