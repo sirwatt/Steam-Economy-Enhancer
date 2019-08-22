@@ -21,8 +21,6 @@
 // @grant       unsafeWindow
 // @homepageURL https://github.com/Nuklon/Steam-Economy-Enhancer
 // @supportURL  https://github.com/Nuklon/Steam-Economy-Enhancer/issues
-// @downloadURL https://raw.githubusercontent.com/Nuklon/Steam-Economy-Enhancer/master/code.user.js
-// @updateURL   https://raw.githubusercontent.com/Nuklon/Steam-Economy-Enhancer/master/code.user.js
 // ==/UserScript==
 // jQuery is already added by Steam, force no conflict mode.
 (function($, async) {
